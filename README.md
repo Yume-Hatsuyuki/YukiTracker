@@ -88,4 +88,15 @@ YukiTracker 修改部分使用 [GNU AGPL-3.0](LICENSE)。上游组件的作者�
 
 各平台先验证源码构建，再解压运行包并使用包内程序验证。检查包含配置解析、版本、HTTP announce/scrape、UDP connect/scrape、统计、分页、gzip 导出、权限拒绝、状态恢复、名单重载、导出限频和正常退出。Linux 还运行 AddressSanitizer 和 UndefinedBehaviorSanitizer，检查内存访问、泄漏和未定义行为。
 
-`release.yml` 在版本标签推送时调用同一组验证。全部任务成功且五个平台的运行包齐全时，创建 GitHub Release。任一任务失败或取消会阻止发布。验证脚本存放在 `.github/checks/`，运行包仅包含程序、配置、README 和许可文件。
+`release.yml` 在版本标签推送时调用同一组验证。全部任务成功且全部目标的运行包齐全时，创建 GitHub Release。任一任务失败或取消会阻止发布。验证脚本存放在 `.github/checks/`，运行包仅包含程序、配置、README 和许可文件。
+
+## Linux 运行库选择
+
+| 包名后缀 | 使用环境 | 运行依赖 |
+| --- | --- | --- |
+| `linux-amd64`、`linux-arm64` | 提供兼容 glibc 的 Linux 系统 | glibc、libyaml、zlib |
+| `linux-amd64-musl-static`、`linux-arm64-musl-static` | Alpine、对应架构的 OpenWrt，以及其他采用现代 Linux 内核的系统 | libc、libyaml、zlib 已静态链接 |
+
+musl 包在 Alpine 3.23 中编译。工作流检查二进制的动态加载器和共享库依赖，分别在 Alpine 和 Ubuntu 上执行协议及状态恢复验证。该验证覆盖上述两个发行版的运行环境，OpenWrt 设备仍需确认 CPU 架构并执行启动检查。
+
+全静态程序更新依赖库时需要重新构建并发布程序。

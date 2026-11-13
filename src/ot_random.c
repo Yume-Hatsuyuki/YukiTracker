@@ -29,6 +29,33 @@ void random_bytes(void *buf, size_t len) {
     *out++ = (uint8_t)(random() >> 8);
 }
 
+#elif defined(__linux__) && !defined(__GLIBC__)
+
+#include <errno.h>
+#include <unistd.h>
+
+void random_init(void) {}
+
+void random_bytes(void *buf, size_t len) {
+  unsigned char *out = buf;
+  while (len) {
+    size_t count = len > 256 ? 256 : len;
+    if (getentropy(out, count)) {
+      if (errno == EINTR)
+        continue;
+      abort();
+    }
+    out += count;
+    len -= count;
+  }
+}
+
+uint32_t random_uint32(void) {
+  uint32_t value;
+  random_bytes(&value, sizeof(value));
+  return value;
+}
+
 #else
 
 #if !defined(__FreeBSD__) && !defined(__OpenBSD__) && !defined(__NetBSD__) && !defined(__DragonFly__) &&               \
