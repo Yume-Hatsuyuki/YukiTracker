@@ -1,0 +1,36 @@
+name: Publish verified release
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    uses: ./.github/workflows/verify.yml
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(cat VERSION)
+          git archive --format=tar.gz --prefix="yukitracker-$version/" -o "dist/yukitracker-$version-source.tar.gz" HEAD
+          cd dist
+          for target in linux-amd64 linux-arm64 macos-amd64 macos-arm64 freebsd-amd64; do
+            test -s "yukitracker-$version-$target.tar.gz"
+          done
+          sha256sum *.tar.gz > SHA256SUMS
+          flags=()
+          [[ "${GITHUB_REF_NAME%%+*}" != *-* ]] || flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --verify-tag --generate-notes "${flags[@]}" *.tar.gz SHA256SUMS

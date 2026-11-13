@@ -1,0 +1,49 @@
+# 修改后重启。秒和分钟均为整数。
+listen.tcp: "127.0.0.1:6969 workers=2"
+listen.udp: "127.0.0.1:6969 workers=4"
+http.keepalive: 0
+http.read_timeout: 30      # 秒，已接入连接等待读取的期限
+http.write_timeout: 900    # 秒，发送缓冲积压时的期限
+tracker.interval: 1800
+tracker.jitter: 360
+tracker.peer_timeout: 45          # 分钟，1 至 255
+tracker.torrent_timeout: 1440     # 分钟
+tracker.empty_torrent_timeout: 1440
+numwant.default: 50
+numwant.http: 200
+numwant.udp4: 200
+numwant.udp6: 66
+access.stats: ["127.0.0.1/32", "::1/128"]
+access.fullscrape: ["127.0.0.1/32", "::1/128"]
+# access.proxy: "127.0.0.1/32"     # 授信反代后才读取 X-Forwarded-For
+# access.whitelist: "allowed.txt"  # 黑白名单二选一，每行一个 40 位十六进制 info_hash
+# access.blacklist: "blocked.txt"
+scrape.http: 64
+scrape.udp: 74
+tracker.key_minutes: 60
+paths.announce: /announce
+paths.scrape: /scrape
+paths.health: /healthz
+paths.stats: /api/v1/stats
+paths.torrents: /api/v1/stats/torrents
+paths.top: /api/v1/stats/top
+paths.networks: /api/v1/stats/networks
+paths.export: /api/v1/export/torrents
+paths.metrics: /metrics
+paths.requests: /api/v1/diagnostics/requests
+paths.busy: /api/v1/diagnostics/busy-networks
+# state.file: /var/lib/yukitracker/state.jsonl
+# state.save_interval: 300         # 秒；0 表示仅在正常退出时保存
+export.max_clients: 4096  # 启用限频时最多同时记住的客户端数
+export.min_interval: 0
+export.enabled: 1
+compression.gzip: 1
+http.client_ip_header: X-Forwarded-For
+diagnostics.log_entries: 0        # 启用时每条最多记录 512 字节
+diagnostics.busy_entries: 0      # 大于零时按前缀统计过早的重复 announce
+diagnostics.busy_gap: 20         # 分钟
+diagnostics.prefix_bits: 24
+diagnostics.decay_seconds: 120
+# access.record: 192.0.2.0/24
+# access.diagnostics: 127.0.0.1/32
+tracker.min_interval_ratio: 0.5

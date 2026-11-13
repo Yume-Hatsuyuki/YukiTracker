@@ -1,0 +1,163 @@
+.Dd 2026-10-28
+.Dt yukitracker.conf 5
+.Os Unix
+.Sh NAME
+.Nm yukitracker.conf
+.Nd configuration file for yukitracker
+.Sh SYNOPSIS
+.Nm
+.Sh DESCRIPTION
+The
+.Nm
+configuration file specifies various options for configuring the behavior of the yukitracker program.
+.Pp
+Lines starting with '#' are comments and are ignored. Options are specified as 'keyword value' pairs.
+.Pp
+The following options are available:
+.Pp
+.Bl -tag -width ".It access.proxy" -compact
+.It listen.tcp_udp Ar address
+Specifies an address yukitracker will listen on for both TCP and UDP connections. If none are specified, yukitracker listens on 0.0.0.0:6969 by default. Can be added more than once.
+.Pp
+.It listen.tcp Ar address
+Specifies the address yukitracker will listen on for TCP connections. Can be added more than once.
+.Pp
+.It listen.udp Ar address
+Specifies the address yukitracker will listen on for UDP connections. Can be added more than once.
+.Pp
+A listen statement may carry options after the address, as in
+.Dl listen.udp 10.0.0.5:6969 workers=4 shared
+where
+.Cm workers Ns = Ns Ar count
+sets the worker count for that socket alone and is ignored for TCP, and
+.Cm shared
+permits another process to bind the same address.
+.Pp
+.It listen.udp.workers Ar threads
+Specifies how many threads will be spawned to handle UDP requests, for every
+listen statement that does not carry a
+.Cm workers
+option of its own. Defaults to 1. A count of 0 serves UDP from the event loop,
+in the thread that also serves TCP. See
+.Sx TUNING
+before raising it.
+.Pp
+.It listen.tcp.workers Ar threads
+Specifies how many threads accept and answer HTTP connections, for every
+listen statement that does not carry a
+.Cm workers
+option of its own. Defaults to 0, which serves them from the event loop. See
+.Sx TUNING
+before raising it.
+.Pp
+.It listen.shared Ar boolean
+Permits another process to bind the same address, for every listen statement
+that does not carry a
+.Cm shared
+option of its own. Defaults to 0, and is useful only where a second tracker is
+deliberately run on the same address.
+.Pp
+.It access.whitelist Ar path/to/whitelist
+Specifies the path to the whitelist file containing all torrent hashes that yukitracker will serve. Use this option if yukitracker runs in a non-open mode.
+.Pp
+.It access.blacklist Ar path/to/blacklist
+Specifies the path to the blacklist file containing all torrent hashes that yukitracker will not serve. Use this option if yukitracker was compiled to allow blacklisting.
+.Pp
+.It access.fifo_add Ar path/to/adder.fifo
+Specifies the path to the FIFO (named pipe) used for dynamic changesets to accesslists. Info hashes written to this FIFO will be added to the main accesslist file.
+.Pp
+.It access.fifo_delete Ar path/to/deleter.fifo
+Specifies the path to the FIFO (named pipe) used for dynamic changesets to accesslists. Info hashes written to this FIFO will be removed from the main accesslist file.
+.Pp
+.It access.stats Ar ip_address_or_network
+Specifies the IP address or network in CIDR notation allowed to fetch stats from yukitracker, in case they are restricted.
+.Pp
+.It access.stats_path Ar path
+Specifies the path to the stats location. You can configure yukitracker to appear anywhere on your tracker. Defaults to /stats.
+.Pp
+.It access.proxy Ar ip_address_or_network
+Specifies the IP address or network of the reverse proxies. YukiTracker will take the X-Forwarded-For address instead of the source IP address. Can be added more than once.
+.Pp
+.It access.fullscrape Ar ip_address_or_network
+Specifies the IP address or network in CIDR notation allowed to fetch fullscrapes from yukitracker, in case they are restricted.
+.Pp
+.It livesync.cluster.listen Ar ip_address:port
+Specifies the IP address and port yukitracker will listen on for incoming live
+sync packets to keep a cluster of yukitrackers synchronized. Every member of a
+cluster has to agree on the port, which is also the one packets are sent to.
+.Pp
+.It livesync.cluster.group Ar ip_address
+Specifies the multicast group a cluster talks in. For reaosns of backwards
+comaptibility with legacy trackers, it defaults to 224.0.23.5, which,
+technically sits in a range IANA assigns on request.
+
+A cluster of its own is better served by an address out of 239.192.0.0/14,
+which RFC 2365 sets aside for private use. Packets carry a ttl of 1 either
+way and never leave the local link. Must be a valid mulitcast address from
+.Pa 224.0.0.0/4
+.
+.Pp
+.It livesync.cluster.node_ip Ar ip_address
+Specifies one trusted IP address for sync between trackers running in a cluster. Can be added more than once.
+.Pp
+.It tracker.rootdir Ar path
+Specifies the directory yukitracker will chroot/chdir to. All black/white list files must be located in this directory.
+.Pp
+.It tracker.user Ar username
+Specifies the user yukitracker will setuid to after binding to potentially privileged ports.
+.Pp
+.It tracker.redirect_url Ar URL
+Specifies the URL yukitracker will redirect to in response to a "GET / HTTP" request.
+.Pp
+.It tracker.empty_torrent_timeout Ar minutes
+Specifies how long a torrent that has no peers left in either family is held for
+its download count alone.
+Defaults to and is limited to 1440 minutes. Lower values save memory at the cost
+of less realiable download counts. A value of zero immediately destroys empty
+torrents.
+.El
+.Sh TUNING
+A worker is a thread that blocks in a read until a datagram arrives. Where the
+kernel spreads arriving datagrams over a group of sockets bound to one address,
+yukitracker binds one socket per worker and throughput rises with the worker
+count. Linux does so, and FreeBSD since 12.0. Where a kernel does not, every
+worker reads the same socket and they contend for its receive queue, so more
+than one worker costs throughput. yukitracker asks at start up and binds a
+group only where the answer is yes.
+.Pp
+.Pp
+A TCP worker accepts a connection and answers it on its own stack, without
+the event loop seeing it at all; only a connection it cannot finish is handed
+over. One worker serves less than none, because accepting leaves the event
+loop's thread without anything gained in return, so the setting is worth
+either 0 or at least 2.
+.Pp
+On FreeBSD the
+.Xr accf_data 9
+filter has the kernel hold a new connection until data arrives on it, so the
+tracker is woken once with the request already there. yukitracker uses it
+wherever it is available; enable it with
+.Cm options ACCEPT_FILTER_DATA
+in the kernel or
+.Va kld_list Ns = Ns Qq accf_data
+in
+.Xr rc.conf 5 .
+.Sh EXAMPLES
+To specify the address yukitracker will listen on for both TCP and UDP connections:
+.Dl listen.tcp_udp 0.0.0.0:6969
+.Pp
+To specify the address yukitracker will listen on for TCP connections:
+.Dl listen.tcp 0.0.0.0
+.Pp
+To specify the address yukitracker will listen on for UDP connections:
+.Dl listen.udp 0.0.0.0:6969
+.Pp
+.Sh SEE ALSO
+.Xr yukitracker 1
+.Pp
+.Sh YUKITRACKER CONFIGURATION
+Use the supplied yukitracker.yaml for YAML keys and defaults. Validate with yukitracker -C -f yukitracker.yaml. This manual also describes the upstream text configuration.
+.Sh AUTHOR
+.An Dirk Engling
+.Aq Mt erdgeist@erdgeist.org
+.Pp
