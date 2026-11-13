@@ -1,0 +1,117 @@
+name: Verify builds and packages
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            target: linux-amd64
+          - runner: ubuntu-24.04-arm
+            target: linux-arm64
+          - runner: macos-15-intel
+            target: macos-amd64
+          - runner: macos-15
+            target: macos-arm64
+    timeout-minutes: 20
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+      - name: Install Linux dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libyaml-dev zlib1g-dev python3
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: brew install libyaml zlib
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Build Unix binary
+        run: |
+          if [[ "$RUNNER_OS" == macOS ]]; then
+            make -j2 CC=clang CPPFLAGS="-I$(brew --prefix libyaml)/include -I$(brew --prefix zlib)/include" \
+              OT_LDLIBS="$(brew --prefix libyaml)/lib/libyaml.a $(brew --prefix zlib)/lib/libz.a"
+          else
+            make -j2
+          fi
+      - name: Verify source build
+        run: |
+          python3 .github/checks/test_protocols.py
+          python3 .github/checks/test_restart.py
+      - name: Check and package Unix binary
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          ./yukitracker -C -f yukitracker.yaml
+          ./yukitracker -v 2>&1 | head -n 1 | grep -Fx "YukiTracker $(cat VERSION)"
+          mkdir -p dist
+          archive="dist/yukitracker-$(cat VERSION)-$TARGET.tar.gz"
+          tar -czf "$archive" yukitracker yukitracker.yaml README.md LICENSE DEDICATION
+          mkdir packaged
+          tar -xzf "$archive" -C packaged
+          cmp yukitracker.yaml packaged/yukitracker.yaml
+          (cd packaged && ./yukitracker -C -f yukitracker.yaml)
+          TRACKER_ROOT=packaged python3 .github/checks/test_protocols.py
+          TRACKER_ROOT=packaged python3 .github/checks/test_restart.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+
+  freebsd:
+    timeout-minutes: 30
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify release tag
+        if: startsWith(github.ref, 'refs/tags/')
+        run: test "$GITHUB_REF_NAME" = "v$(cat VERSION)"
+      - uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+          prepare: pkg install -y gmake libyaml python311
+          run: |
+            set -eu
+            gmake -j2 CC=cc CPPFLAGS=-I/usr/local/include LDFLAGS=-L/usr/local/lib
+            python3.11 .github/checks/test_protocols.py
+            python3.11 .github/checks/test_restart.py
+            ./yukitracker -C -f yukitracker.yaml
+            ./yukitracker -v 2>&1 | head -n 1 | grep -Fx "YukiTracker $(cat VERSION)"
+            mkdir -p dist packaged
+            tar -czf "dist/yukitracker-$(cat VERSION)-freebsd-amd64.tar.gz" yukitracker yukitracker.yaml README.md LICENSE DEDICATION
+            tar -xzf dist/*.tar.gz -C packaged
+            cmp yukitracker.yaml packaged/yukitracker.yaml
+            TRACKER_ROOT=packaged python3.11 .github/checks/test_protocols.py
+            TRACKER_ROOT=packaged python3.11 .github/checks/test_restart.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: freebsd-amd64
+          path: dist/*.tar.gz
+          if-no-files-found: error
+
+  sanitizers:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libyaml-dev zlib1g-dev python3
+      - name: Build with address and undefined behavior checks
+        run: make CC=gcc CFLAGS="-O1 -g -fsanitize=address,undefined -fno-omit-frame-pointer" LDFLAGS="-fsanitize=address,undefined"
+      - name: Run protocol and persistence checks
+        env:
+          ASAN_OPTIONS: detect_leaks=1:halt_on_error=1
+          UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+        run: |
+          python3 .github/checks/test_protocols.py
+          python3 .github/checks/test_restart.py
